@@ -1,0 +1,19 @@
+.App {
+  text-align: center;
+}
+
+.vis-even div {
+  display: none;
+}
+
+.gantt-body {
+  pointer-events: none;
+}
+
+.time-line-scroller {
+  pointer-events: none;
+}
+
+.gantt-panel .time-panel .time-table-activity .text-content {
+  background-color: #5aaafa;
+}

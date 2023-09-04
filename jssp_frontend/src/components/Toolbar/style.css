@@ -1,0 +1,92 @@
+.toolbar-container {
+    background-color: #264a60;
+}
+
+.toolbar-header {
+    height: 50px;
+    display: flex;
+    align-items: center;
+}
+
+.toolbar-title {
+    margin-left: 30px;
+    font-size: large;
+    color: white;
+}
+
+.problem-configuration-panel {
+    background-color: #51616b;
+    background-color: white;
+    padding: 10px;
+    display: flex;
+    justify-content: space-evenly;
+}
+
+.toolbar-results {
+    color: white;
+    background-color: #264a60;
+    padding: 10px;
+}
+
+.problem-configuration-panel form {
+    display: flex;
+    /* justify-content: space-evenly; */
+    /* padding: 15px; */
+}
+
+.problem-input input[type=text]{
+    text-align: center;
+    margin: 0px 10px;
+}
+
+.toolbar-run-button{
+    padding: 15px;
+}
+
+.toolbar-run-button button{
+    background-color: #264a60;
+    color: white;
+    border-radius: 20px;
+    padding: 5px 15px;
+    margin-left: 10px;
+    border: none;
+    font-size: large;
+    cursor: pointer;
+}
+
+.toolbar-run-button button:hover {
+    background-color: #678394;
+}
+
+.problem-input input[type=radio] {
+    margin-top: 15px;
+}
+
+.instance-configurator {
+    display: flex;
+    flex-direction: column;
+}
+
+.instance-type-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.instance-selector {
+    cursor: pointer;
+    width: 200px;
+    border-radius: 50px 0 0 50px;
+    margin-bottom: 2px;
+    padding: 5px;
+    background-color: lightgray;
+}
+
+.instance-selector:last-child {
+    border-radius: 0 50px 50px 0px;
+}
+
+.instance-selector.selected {
+    color: white;
+    background-color: #264a60;
+}
