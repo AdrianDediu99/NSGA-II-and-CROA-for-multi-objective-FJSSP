@@ -36,7 +36,6 @@ function App() {
 
       let temp2 = content.split('\n')
 
-      console.log(temp2)
       let operationsNum = 0;
       for (let i = 1; i <= temp[0]; i++) {
         operationsNum += parseInt(temp2[i].split(' ')[0]);
@@ -244,7 +243,6 @@ function App() {
       })
       .catch((error) => {
         setLoading(false);
-        console.log(error);
       })
   }
 

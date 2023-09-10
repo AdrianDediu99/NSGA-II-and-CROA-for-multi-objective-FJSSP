@@ -11,13 +11,8 @@ export async function uploadDataset(req, res) {
 export async function runScheduling(req, res) {
     const { algorithm, numberOfJobs, numberOfMachines, generations, populationSize, numberOfProcesses, defaultSample } = req.body;
 
-    console.log("Selected algorithm: ", algorithm);
-
-    console.log("ROOT PATH: ", process.env.EXE_PATH);
-
     // Path to C++ executable
     const cppExecutablePath = `${process.env.EXE_PATH}${algorithm}.exe`;
-    console.log("EXE PATH: ", cppExecutablePath);
 
     // Input data to pass to the C++ executable
     const argumentsArray = [numberOfJobs, numberOfMachines, numberOfProcesses, populationSize, generations, defaultSample];
@@ -39,8 +34,6 @@ export async function runScheduling(req, res) {
     childProcess.on('close', code => {
         if (code === 0) {
             // Process completed successfully
-            console.log('C++ process completed successfully.');
-            console.log('Output:', outputData);
             res.status(200).json({ message: outputData });
         } else {
             // Process encountered an error
