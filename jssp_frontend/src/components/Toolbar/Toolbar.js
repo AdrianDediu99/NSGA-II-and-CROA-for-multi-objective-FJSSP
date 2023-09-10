@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import axios from 'axios'
 import './style.css'
 
 const Toolbar = ({ 
@@ -18,13 +19,15 @@ const Toolbar = ({
     setNumberOfProcesses,
     completionTime,
     equipmentLoad,
+    defaultSample,
     setDefaultSample,
+    updateCustomDataset,
     loading
  }) => {
 
     const [isDefaultSelected, setIsDefaultSelected] = useState(true);
     const [isRandomSelected, setIsRandomSelected] = useState(false);
-
+  
     const handleDefaultSelector = () => {
         setIsDefaultSelected(true);
         setIsRandomSelected(false);
@@ -36,6 +39,36 @@ const Toolbar = ({
         setIsRandomSelected(true);
         setDefaultSample(0);
     }
+
+    useEffect(() => {
+        if(defaultSample === 0) {
+            setIsDefaultSelected(false);
+            setIsRandomSelected(true);
+        }
+        if(defaultSample === 1) {
+            setIsDefaultSelected(true);
+            setIsRandomSelected(false);
+        }
+    },[defaultSample])
+
+    const handleFileChange = async (event) => {
+        const file = event.target.files[0];
+    
+        if (file) {
+            updateCustomDataset(file);
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await axios.post('http://localhost:8000/api/upload-dataset', formData, { withCredentials: true })
+            .then(response => {
+                    setDefaultSample(file.name);
+                    console.log('File uploaded successfully');
+                })
+            .catch((error) => {
+                console.error('There was an error uploading the file', error);
+                })
+        }
+    };
 
   return (
     <div className='toolbar-container'>
@@ -69,6 +102,9 @@ const Toolbar = ({
             </div>
             <div className='instance-configurator'>
                 <div className='instance-type-container'>
+                    <div>
+                        <input type="file" onChange={handleFileChange} />
+                    </div>
                     <div className={isDefaultSelected ? 'instance-selector selected' : 'instance-selector'} onClick={handleDefaultSelector}>
                         Default sample
                     </div>
@@ -127,4 +163,4 @@ const Toolbar = ({
   )
 }
 
-export default Toolbar
+export default Toolbar;

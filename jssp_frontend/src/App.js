@@ -25,6 +25,28 @@ function App() {
   const [defaultSample, setDefaultSample] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const updateCustomDataset = (file) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const content = e.target.result; // This contains the file content as a string
+      let temp = content.split('\t');
+      setNumberOfJobs(temp[0]);
+      setNumberOfMachines(temp[1]);
+
+      let temp2 = content.split('\n')
+
+      console.log(temp2)
+      let operationsNum = 0;
+      for (let i = 1; i <= temp[0]; i++) {
+        operationsNum += parseInt(temp2[i].split(' ')[0]);
+      }
+      setNumberOfProcesses(operationsNum);
+    };
+
+    reader.readAsText(file);
+  };
+
   const fillDataset = (response) => {
     setCompletionTime(0);
     setEquipmentLoad(0);
@@ -98,9 +120,9 @@ function App() {
     for (let processIndex = 0; processIndex < numberOfProcesses; processIndex++) {
       let startTime = [];
       let endTime = [];
-      let jobId = solutions[1].processes[processIndex].split(',')[0]; //string
-      let processId = solutions[1].processes[processIndex].split(',')[1]; //string  
-      let machineId = solutions[1].machines[processIndex]; //string      
+      let jobId = solutions[1].processes[processIndex].split(',')[0];
+      let processId = solutions[1].processes[processIndex].split(',')[1];  
+      let machineId = solutions[1].machines[processIndex];      
       
       let cwt = dataset[parseInt(jobId)-1].processes[parseInt(processId)-1].machineDurations[parseInt(machineId)-1];
 
@@ -176,22 +198,16 @@ function App() {
     
     const configuration = {
       data: {
-        // Configures how to fetch resources for the Gantt
         resources: {
-          data: data, // resources are provided in an array. Instead, we could configure a request to the server.
-          // Activities of the resources are provided along with the 'activities' property of resource objects.
-          // Alternatively, they could be listed from the 'data.activities' configuration.
+          data: data,
           activities: 'activities',
-          name: 'name', // The name of the resource is provided with the name property of the resource object.
-          id: 'id', // The id of the resource is provided with the id property of the resource object.
+          name: 'name',
+          id: 'id',
         },
-        // Configures how to fetch activities for the Gantt
-        // As activities are provided along with the resources, this section only describes how to create
-        // activity Gantt properties from the activity model objects.
         activities: {
-          start: 'start', // The start of the activity is provided with the start property of the model object
-          end: 'end', // The end of the activity is provided with the end property of the model object
-          name: 'name', // The name of the activity is provided with the name property of the model object
+          start: 'start',
+          end: 'end',
+          name: 'name',
         },
       },
     }
@@ -239,6 +255,7 @@ function App() {
     setDataset([]);
     setSolutions([]);
     setChartData([]);
+    setDefaultSample(1)
   }
 
   useEffect(() => {
@@ -277,7 +294,9 @@ function App() {
               setNumberOfProcesses={setNumberOfProcesses}
               completionTime={completionTime}
               equipmentLoad={equipmentLoad}
+              defaultSample={defaultSample}
               setDefaultSample={setDefaultSample}
+              updateCustomDataset={updateCustomDataset}
               loading={loading}
       />
       <GanttChart config={config} style={{height: `${30 * chartData.length + 60}px`}} />
