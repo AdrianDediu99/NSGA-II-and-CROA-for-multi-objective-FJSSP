@@ -12,7 +12,7 @@ public:
 	Individual(std::shared_ptr<Individual> indidual);
 	Individual(std::vector<Job> jobs, int numProcesses, int numMachines, int seedEntropy);
 	std::string getGenesAsString();
-	void mutate(const int& numberOfMachines);
+	void mutate(std::vector<Job> jobs, const int& numberOfMachines);
 	bool dominates(const std::shared_ptr<Individual>& indidual);
 
 	std::vector<int> processes_; // <jobId>
@@ -27,6 +27,8 @@ public:
 	float crowdingDistance_ = 0;
 
 	bool isChild = false;
+
+	bool operator==(const Individual& other) const;
 };
 
 using IndividualPtr = std::shared_ptr<Individual>;

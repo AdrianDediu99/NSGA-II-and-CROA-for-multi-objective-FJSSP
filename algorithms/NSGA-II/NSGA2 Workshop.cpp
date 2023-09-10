@@ -19,8 +19,7 @@ Nsga::Nsga()
 	numberOfJobs_ = numberOfMachines_ = itterations_ = sampleSize_ = numberOfProcesses_ = 0;
 }
 
-Nsga::Nsga(int numberOfJobs, int numberOfMachines, int itterations,int sampleSize, int numberOfProcesses, int useDefault) 
-{
+Nsga::Nsga(int numberOfJobs, int numberOfMachines, int itterations,int sampleSize, int numberOfProcesses, std::string useDefault) {
 	numberOfJobs_ = numberOfJobs;
 	numberOfMachines_ = numberOfMachines;
 	itterations_ = itterations;
@@ -44,12 +43,16 @@ void Nsga::run()
 			std::cout << population_[0]->getGenesAsString() << ";";
 
 		// STEP 3: Fast non-dominated and crowding ranking
-		calculateNonDominatedValuesAndCrowdingDegree();
+		nonDominatedSortingAndCrowdingDegree();
 
 		// STEP 4: Competition selection
 		competitionSelection();
 
 		calculateLinearlyDecreasingProbability(itteration);
+
+		if(itteration >= itterations_/3) {
+			calculateElitistRetentionFactor(itteration);
+		}
 
 		// STEP 5: Crossover and mutation operation
 		crossoverAndMutation();
@@ -57,7 +60,7 @@ void Nsga::run()
 		cleanupOldValues();
 
 		// STEP 6: Elitist retention strategy
-		elitistRetention();
+		elitistRetention(itteration);
 
 		// Cleanup old values
 		cleanupOldValues();
@@ -70,16 +73,20 @@ void Nsga::run()
 	outputOptimalSolution();
 }
 
-void Nsga::initalizePopulation() 
+void Nsga::initalizePopulation()
 {
 	// Generate jobs
-	if (useDefaultSample_ == 1) 
-	{
-		jobs_ = importDefaultSample();
-	} 
-	else 
-	{
-		jobs_ = generateJobs(numberOfJobs_, numberOfProcesses_, numberOfMachines_);
+	if (useDefaultSample_.size() == 1) {
+		if (std::stoi(useDefaultSample_) == 1) 
+		{
+			jobs_ = importDefaultSample();
+		} 
+		else 
+		{
+			jobs_ = generateJobs(numberOfJobs_, numberOfProcesses_, numberOfMachines_);
+		}
+	} else {
+		jobs_ = importDefaultSample(useDefaultSample_);
 	}
 
 	// Displaying the generated jobs and their processes
@@ -119,7 +126,7 @@ void Nsga::determineFitnessValue()
 			int currentWorkpieceTime = jobs_[jobIndex].processes[processIndex].machineDurations[machineIndex];
 
 			auto jobTime = jobRuntime.find(jobIndex);
-			if (jobTime == jobRuntime.end()) 
+			if (jobTime == jobRuntime.end())
 			{
 				jobRuntime[jobIndex] = 0;
 			}
@@ -128,7 +135,7 @@ void Nsga::determineFitnessValue()
 			auto machineTime = machinesRuntime.find(machineIndex);
 			if (machineTime != machinesRuntime.end())
 			{
-				if (jobRuntime[jobIndex] > machinesRuntime[machineIndex]) 
+				if (jobRuntime[jobIndex] > machinesRuntime[machineIndex])
 				{
 					jobRuntime[jobIndex] += currentWorkpieceTime;
 					machinesRuntime[machineIndex] = jobRuntime[jobIndex];
@@ -159,42 +166,98 @@ void Nsga::determineFitnessValue()
 	}
 }
 
-void Nsga::calculateNonDominatedValuesAndCrowdingDegree() 
+void Nsga::nonDominatedSortingAndCrowdingDegree()
 {
-
 	// Non-dominated values
-	for (std::size_t i=0; i < (population_.size() - 1); i++)
+	std::vector<IndividualPtr> firstFront;
+	for (std::size_t i=0; i < population_.size(); i++)
 	{
-		for (int j=i+1; j < population_.size(); j++)
+		for (int j=0; j < population_.size(); j++)
 		{
-			// check if point 1 dominates point 2
+			// check if point 1 < point 2
 			if(population_[i]->dominates(population_[j]))
 			{
 				population_[i]->dominatedPoints_.push_back(j);
-				population_[j]->dominationCount_+=1;
-			}
-
-			// check if point 2 dominates point 1
-			if(population_[j]->dominates(population_[i]))
+			} else if (population_[j]->dominates(population_[i]))
 			{
-				population_[j]->dominatedPoints_.push_back(i);
 				population_[i]->dominationCount_+=1;
 			}
 		}
+
+		if (population_[i]->dominationCount_ == 0)
+		{
+			population_[i]->frontLevel_ = 0;
+			firstFront.push_back(population_[i]);
+		}
 	}
 
-	//  1st front sorting
-	sortNonDominated();
+	fronts_.push_back(firstFront);
 
-	//  2nd front sorting
-	sortNonDominated();
+	int i = 0;
+	while(fronts_[i].size() > 0) 
+	{
+		std::vector<IndividualPtr> nextFront;
+		for(auto individual : fronts_[i]) {
+			for (auto j : individual->dominatedPoints_) 
+			{
+				population_[j]->dominationCount_--;
+				if (population_[j]->dominationCount_ == 0) 
+				{
+					population_[j]->frontLevel_ = i+1;
+					nextFront.push_back(population_[j]);
+				}
+			}
+		}
+		i++;
+		fronts_.push_back(nextFront);
+	}
 
-	//  3rd front sorting, the remaining ones are front 4
-	sortNonDominated();
+	for (std::vector<IndividualPtr> front : fronts_) 
+	{
+		if (front.size() > 0) 
+		{
+			int solutions_number = front.size();
+			// calculate crowding distance based on objective 1
+			std::sort(front.begin(), front.end(),
+				[](const IndividualPtr &a, const IndividualPtr &b) -> bool
+				{
+					return a->maxCompletionTime_ < b->maxCompletionTime_;
+				});
+			front[0]->crowdingDistance_ = front[solutions_number - 1]->crowdingDistance_ = std::numeric_limits<double>::infinity();
 
-	calculateFrontLevel();
+			std::vector<int> durationsInFront;
+			for (auto individual : front) 
+			{
+				durationsInFront.push_back(individual->maxCompletionTime_);
+			}
+			int scale = std::max_element(durationsInFront.begin(), durationsInFront.end()) - std::min_element(durationsInFront.begin(), durationsInFront.end()); 
+			if(scale == 0) scale = 1;
+			for (int i = 1; i < solutions_number - 1; i++) 
+			{
+				front[i]->crowdingDistance_ += static_cast<double>(front[i+1]->maxCompletionTime_ - front[i-1]->maxCompletionTime_) / static_cast<double>(scale);
+			}
 
-	calculateCrowdingDistance();
+			// calculate crowding distance based on objective 2
+			std::sort(front.begin(), front.end(),
+				[](const IndividualPtr &a, const IndividualPtr &b) -> bool
+				{
+					return a->totalEquipmentLoad_ < b->totalEquipmentLoad_;
+				});
+			front[0]->crowdingDistance_ = front[solutions_number - 1]->crowdingDistance_ = std::numeric_limits<double>::infinity();
+
+			std::vector<int> totalLoadInFront;
+			for (auto individual : front) 
+			{
+				totalLoadInFront.push_back(individual->totalEquipmentLoad_);
+			}
+			scale = std::max_element(totalLoadInFront.begin(), totalLoadInFront.end()) - std::min_element(totalLoadInFront.begin(), totalLoadInFront.end()); 
+			if(scale == 0) scale = 1;
+			for (int i = 1; i < solutions_number - 1; i++) 
+			{
+				front[i]->crowdingDistance_ += static_cast<double>(front[i+1]->totalEquipmentLoad_ - front[i-1]->totalEquipmentLoad_) / static_cast<double>(scale);
+			}
+		}
+	}
 
 	std::sort(population_.begin(), population_.end(),
 		[](const IndividualPtr &a, const IndividualPtr &b) -> bool
@@ -204,6 +267,8 @@ void Nsga::calculateNonDominatedValuesAndCrowdingDegree()
 			else
 				return a->frontLevel_ < b->frontLevel_;
 		});
+
+	fronts_.clear();
 }
 
 void Nsga::competitionSelection() 
@@ -216,6 +281,8 @@ void Nsga::competitionSelection()
 
 	std::vector<int> selectedParents;
 
+	int retry = 0;
+
 	while (selectedParents.size() < population_.size()) 
 	{
 		// Combine multiple sources of entropy for the seed
@@ -224,9 +291,17 @@ void Nsga::competitionSelection()
 
 		int firstIndividual = gen() % population_.size();
 		int secondIndividual = gen() % population_.size();
-		if (firstIndividual == secondIndividual) continue;
 
-		if (population_[firstIndividual]->frontLevel_ == population_[secondIndividual]->frontLevel_) {
+		if (retry < 50 && *population_[firstIndividual] == *population_[secondIndividual]) 
+		{
+			retry++;
+			continue;
+		}
+
+		retry = 0;
+
+		if (population_[firstIndividual]->frontLevel_ == population_[secondIndividual]->frontLevel_) 
+		{
 			if (population_[firstIndividual]->crowdingDistance_ > population_[secondIndividual]->crowdingDistance_) 
 			{
 				selectedParents.push_back(firstIndividual);
@@ -301,7 +376,7 @@ void Nsga::crossoverAndMutation()
 								count++; // Increment the occurrence count
 								if (count == occurrenceVector[processGene1]) 
 								{
-									jobIndex2 = i; // Return the index when occurrence is found
+									jobIndex2 = i; // Return the index when Oth occurrence is found
 								}
 							}
 						}
@@ -381,26 +456,24 @@ void Nsga::crossoverAndMutation()
 						}
 					}
 				}
+			}
 
-				randomValue = dis(gen);
+			double randomMutationDraw = ((double)rand() / (RAND_MAX));
 
-				if (randomValue <= currentMutationProbability_) 
-				{
-					child1->mutate(numberOfMachines_);
-					child2->mutate(numberOfMachines_);
-				}
-
-				child1->isChild = true;
-				child2->isChild = true;
-
-				newPopulation_.push_back(child1);
-				newPopulation_.push_back(child2);
+			if (randomMutationDraw <= currentMutationProbability_) {
+				child1->mutate(jobs_, numberOfMachines_);
+				child2->mutate(jobs_, numberOfMachines_);
 			}
 		}
+		child1->isChild = true;
+		child2->isChild = true;
+
+		newPopulation_.push_back(child1);
+		newPopulation_.push_back(child2);
 	}
 }
 
-void Nsga::elitistRetention() 
+void Nsga::elitistRetention(int iteration) 
 {
 	for (const auto& parents : selectedParents_) 
 	{
@@ -423,12 +496,30 @@ void Nsga::elitistRetention()
 	newPopulation_.clear();
 
 	determineFitnessValue();
-	calculateNonDominatedValuesAndCrowdingDegree();
+	nonDominatedSortingAndCrowdingDegree();
 
-	while (population_.size() > sampleSize_) 
+	std::vector<IndividualPtr> newPopulation;
+
+	int currentParents = 0;
+	for (auto& individual : population_) 
 	{
-		population_.pop_back();
+		if (newPopulation.size() == sampleSize_) break;
+		if (!individual->isChild && currentParents >= static_cast<double>(currentElitistRetentionFactor_ * sampleSize_)) continue;
+		if (!individual->isChild) currentParents++;
+		IndividualPtr newIndividual = std::make_shared<Individual>(individual);
+		newPopulation.push_back(newIndividual);
 	}
+
+	population_.clear();
+
+	for(auto& individual : newPopulation) 
+	{
+		IndividualPtr newIndividual = std::make_shared<Individual>(individual);
+		population_.push_back(newIndividual);
+	}
+
+	determineFitnessValue();
+	nonDominatedSortingAndCrowdingDegree();
 }
 
 void Nsga::cleanupOldValues()
@@ -445,17 +536,12 @@ void Nsga::cleanupOldValues()
 		iter->frontLevel_ = 0;
 		iter->crowdingDistance_ = 0.0;
 	}
-
-	front1_.clear();
-	front2_.clear();
-	front3_.clear();
-	front4_.clear();
 }
 
 void Nsga::outputOptimalSolution() 
 {
 	determineFitnessValue();
-	calculateNonDominatedValuesAndCrowdingDegree();
+	nonDominatedSortingAndCrowdingDegree();
 
 	// Optimal solutions sorted by total front level and crowding distance
 	std::sort(population_.begin(), population_.end(),
@@ -477,209 +563,95 @@ void Nsga::calculateLinearlyDecreasingProbability(int iteration)
 	currentMutationProbability_ = maxMutationProbability + progress * (minMutationProbability - maxMutationProbability);
 }
 
-void Nsga::calculateFrontLevel()
+void Nsga::calculateElitistRetentionFactor(int iteration) 
 {
-	std::vector<int> frontCountVector(5,0);
-
-	for (auto& iter: population_)
-	{
-		iter->frontLevel_ = iter->dominationCount_ + 4;
-		if(iter->frontLevel_ > 4)
-		{
-			iter->frontLevel_ = 4;
-		}
-		frontCountVector[iter->frontLevel_]++;
-	}
-}
-
-void Nsga::calculateCrowdingDistance()
-{
-	//	add maxCompletionTime to crowding distance
-	sortPopulationByMaxCompletionTime();
-	for (auto iter : population_)
-	{
-		if (iter->frontLevel_ == 1)
-		{
-			front1_.push_back(iter->maxCompletionTime_);
-		}
-		if (iter->frontLevel_ == 2)
-		{
-			front2_.push_back(iter->maxCompletionTime_);
-		}
-		if (iter->frontLevel_ == 3)
-		{
-			front3_.push_back(iter->maxCompletionTime_);
-		}
-		if (iter->frontLevel_ == 4)
-		{
-			front4_.push_back(iter->maxCompletionTime_);
-		}
-	}
-	calculateFrontCrowdingDistance();
-
-	//	add totalEquipmentLoad to crowding distance
-	sortPopulationByTotalEquipmentLoad();
-	for (auto iter : population_)
-	{
-		if (iter->frontLevel_ == 1)
-		{
-			front1_.push_back(iter->totalEquipmentLoad_);
-		}
-		if (iter->frontLevel_ == 2)
-		{
-			front2_.push_back(iter->totalEquipmentLoad_);
-		}
-		if (iter->frontLevel_ == 3)
-		{
-			front3_.push_back(iter->totalEquipmentLoad_);
-		}
-		if (iter->frontLevel_ == 4)
-		{
-			front4_.push_back(iter->totalEquipmentLoad_);
-		}
-	}
-	calculateFrontCrowdingDistance();
-}
-
-void Nsga::calculateFrontCrowdingDistance()
-{
-	int front1Iter, front2Iter, front3Iter, front4Iter;
-	front1Iter = front2Iter = front3Iter = front4Iter = 0;
-
-	for (auto& individual : population_)
-	{
-		if (individual->frontLevel_ == 1)
-		{
-			if (front1Iter == 0 || front1Iter == (front1_.size()-1))
-			{
-				individual->crowdingDistance_ += maxCrowdingDistance_;
-			}
-			else
-			{
-				individual->crowdingDistance_ +=
-					float(front1_[front1Iter + 1] - front1_[front1Iter - 1]) / (*(--front1_.end()) - *(front1_.begin()));
-			}
-			front1Iter++;
-		}
-
-		if (individual->frontLevel_ == 2)
-		{
-			if (front2Iter == 0 || front2Iter == (front2_.size()-1))
-			{
-				individual->crowdingDistance_ += maxCrowdingDistance_;
-			}
-			else
-			{
-				individual->crowdingDistance_ +=
-					float(front2_[front2Iter + 1] - front2_[front2Iter - 1]) / (*(--front2_.end()) - *(front2_.begin()));
-			}
-			front2Iter++;
-		}
-
-		if (individual->frontLevel_ == 3)
-		{
-			if (front3Iter == 0 || front3Iter == (front3_.size()-1))
-			{
-				individual->crowdingDistance_ += maxCrowdingDistance_;
-			}
-			else
-			{
-				individual->crowdingDistance_ +=
-					float(front3_[front3Iter + 1] - front3_[front3Iter - 1]) / (*(--front3_.end()) - *(front3_.begin()));
-			}
-			front3Iter++;
-		}
-
-		if (individual->frontLevel_ == 4)
-		{
-			if (front4Iter == 0 || front4Iter == (front4_.size()-1))
-			{
-				individual->crowdingDistance_ += maxCrowdingDistance_;
-			}
-			else
-			{
-				individual->crowdingDistance_ +=
-					float(front4_[front4Iter + 1] - front4_[front4Iter - 1]) / (*(--front4_.end()) - *(front4_.begin()));
-			}
-			front4Iter++;
-		}
-	}
-	front1_.clear();
-	front2_.clear();
-	front3_.clear();
-	front4_.clear();
-}
-
-// sorting methods
-
-void Nsga::sortNonDominated()
-{
-	for (int i = 0; i < population_.size(); i++)
-	{
-		if (population_[i]->dominationCount_ < 0)
-		{
-		// negative values for individuals that already dominate
-		population_[i]->dominationCount_-=1;
-		}
-	}
-	
-	for (int j = 0; j < population_.size(); j++)
-	{
-		if (population_[j]->dominationCount_ == 0)
-		{
-			//separating the 1st sorting from the 2nd
-			population_[j]->dominationCount_=-1;
-		}
-	}
-
-	for (int k = 0; k < population_.size(); k++)
-	{
-		if (population_[k]->dominationCount_ == -1)
-		{			
-			for (auto it : population_[k]->dominatedPoints_)
-				{
-					// for every dominatedPoint, go to corresponding individual and decrement the dominationCount
-					population_[it]->dominationCount_-=1;
-				}
-		}
-	}
-}
-
-void Nsga::sortPopulationByMaxCompletionTime()
-{
-	std::sort(population_.begin(), population_.end(),
-		[](const IndividualPtr &a, const IndividualPtr &b) -> bool
-		{
-			return a->maxCompletionTime_ < b->maxCompletionTime_;
-		});
-}
-
-void Nsga::sortPopulationByTotalEquipmentLoad()
-{
-	std::sort(population_.begin(), population_.end(),
-		[](const IndividualPtr &a, const IndividualPtr &b) -> bool
-		{
-			return a->totalEquipmentLoad_ < b->totalEquipmentLoad_;
-		});
+    if (iteration <= itterations_ / 3) {
+        currentElitistRetentionFactor_ = 0.4;
+    } else if (iteration >= itterations_) {
+        currentElitistRetentionFactor_ = 0.1;
+    } else {
+        double slope = (0.1 - 0.4) / (itterations_ - itterations_ / 3);
+        double intercept = 0.4 - slope * (itterations_ / 3);
+        currentElitistRetentionFactor_ = slope * iteration + intercept;
+    }
 }
 
 // utility methods
 
-std::vector<Job> Nsga::importDefaultSample()
+std::vector<Job> Nsga::importDefaultSample(std::string fileName)
 {
-	
 	std::vector<Job> jobs = std::vector<Job>(numberOfJobs_);
 
-	std::ifstream file("dataset.txt");
+	std::ifstream file(fileName);
 	std::string content;
-	
+
 	if (!file.is_open()) 
 	{
         content = "1,1:12,5,18,10,16,23,18,12,21,13;1,2:15,12,5,16,7,18,21,17,16,9;1,3:17,4,12,11,9,14,11,10,25,10;2,1:19,14,5,17,16,13,10,15,14,6;2,2:18,14,24,11,16,19,20,9,22,7;2,3:13,16,10,15,18,16,17,5,15,16;2,4:8,7,12,6,5,10,22,8,8,17;3,1:16,13,18,6,14,7,20,12,19,5;3,2:11,10,9,16,11,8,5,12,10,5;4,1:21,17,21,16,20,5,18,8,19,17;4,2:5,24,12,20,17,18,20,22,21,14;4,3:6,7,5,5,7,6,16,9,17,10;5,1:23,14,12,5,15,11,13,14,5,16;5,2:15,5,22,12,16,8,13,18,8,13;5,3:12,10,11,14,15,25,16,13,15,15;6,1:5,15,6,17,20,16,14,10,5,19;6,2:14,13,12,5,15,7,11,14,17,13;7,1:18,21,15,12,9,24,7,5,20,7;7,2:17,14,15,17,19,20,15,12,16,15;7,3:8,10,9,8,7,12,14,7,8,9;7,4:15,20,18,23,5,16,10,16,6,21;7,5:12,25,16,8,15,9,18,17,20,5;7,6:10,8,7,7,7,8,9,17,6,8;8,1:17,20,8,23,19,19,11,15,16,5;8,2:5,18,15,20,16,22,19,17,13,14;8,3:24,7,26,24,25,24,9,18,10,20;8,4:5,22,16,18,13,7,19,8,20,21;9,1:5,7,7,11,8,11,10,23,8,18;9,2:24,25,7,22,12,18,5,20,17,21;9,3:15,9,13,13,14,10,12,11,16,10;10,1:20,21,18,11,19,18,17,8,22,19;10,2:15,14,8,15,10,16,13,15,16,12;10,3:11,15,8,12,10,13,23,8,9,9";
     } 
 	else 
 	{
-		content = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		if (fileName.compare("dataset.txt") == 0) 
+		{
+			content = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		} 
+		else 
+		{
+			std::stringstream result;
+
+			int number_total_jobs, number_total_machines, number_max_operations;
+			std::string line;
+			std::getline(file, line);
+			std::istringstream headerStream(line);
+			headerStream >> number_total_jobs >> number_total_machines >> number_max_operations;
+
+			// Set Job Id to 1 to initiate dataset load
+			int currentJob = 1;
+
+			while (std::getline(file, line)) 
+			{
+				if (currentJob > number_total_jobs) 
+				{
+					break;
+				}
+
+
+				std::istringstream lineStream(line);
+				int number_operations;
+				lineStream >> number_operations;
+
+				for (int id_operation = 0; id_operation < number_operations; ++id_operation) 
+				{
+					result << currentJob << "," << id_operation+1 << ":";
+					int machinesNumber;
+					lineStream >> machinesNumber;
+					std::map<int,int> machinesMap;
+					for (int i = 1; i <= number_total_machines; i++) 
+					{
+						machinesMap.insert(std::make_pair(i,100));
+					}
+					for (int i = 0; i < machinesNumber; i++) 
+					{
+						int machine, time;
+						lineStream >> machine >> time;
+						machinesMap[machine] = time;
+					}
+
+					for (int i = 1; i <= number_total_machines; i++) 
+					{
+						if (i == number_total_machines) 
+						{
+							result << machinesMap[i] << ";";
+							break;
+						}
+						result << machinesMap[i] << ",";
+					}
+				}
+				currentJob++;
+			}
+
+			content = result.str();
+		}
 	}
 
 	size_t firstPeriodPos = content.find('.');
@@ -724,7 +696,7 @@ std::vector<Job> Nsga::importDefaultSample()
 	return jobs;
 }
 
-std::vector<Job> Nsga::generateJobs(int numberOfJobs, int numberOfProcesses, int numberOfMachines) 
+std::vector<Job> Nsga::generateJobs(int numberOfJobs, int numberOfProcesses, int numberOfMachines)
 {
 	std::vector<Job> jobs;
 
@@ -803,6 +775,53 @@ void Nsga::splitJobs(std::vector<int>& firstGroup, std::vector<int>& secondGroup
 
 	firstGroup = firstVector;
 	secondGroup = secondVector;
+}
+
+void Nsga::minimizeAdjacentDuplicates(std::vector<int>& nums) 
+{
+    std::unordered_map<int, int> freqMap;
+
+    // Calculate the frequency of each number
+    for (const auto& num : nums) 
+	{
+        ++freqMap[num];
+    }
+
+    // Use priority queue to sort by frequency
+    auto compare = [](const std::pair<int, int>& a, const std::pair<int, int>& b) 
+	{
+        return a.second < b.second;
+    };
+    std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>, decltype(compare)> pq(compare);
+
+    for (const auto& entry : freqMap) 
+	{
+        int num = entry.first;
+        int freq = entry.second;
+        pq.push({num, freq});
+    }
+
+    int n = nums.size();
+    int i = 0;
+
+    // Try to place each number as far apart as possible
+    while (!pq.empty()) 
+	{
+        auto top = pq.top();
+        pq.pop();
+        int num = top.first;
+        int freq = top.second;
+
+        for (int count = 0; count < freq; ++count) 
+		{
+            if (i >= n) {
+                i = 1;  // Reset index to fill in the gaps
+            }
+
+            nums[i] = num;
+            i += 2;  // Try to place the number far apart
+        }
+    }
 }
 
 std::vector<std::pair<int, int>> Nsga::unique_pairs(const std::vector<int>& vec) 
@@ -981,7 +1000,7 @@ int main(int argc, char* argv[])
 	int numberOfJobs, numberOfMachines, numberOfProcesses;
 	int sampleSize;
 	int itterations;
-	int useDefault = 0;
+	std::string useDefault;
 
 	if (command_line_args) 
 	{
@@ -1001,7 +1020,7 @@ int main(int argc, char* argv[])
 
 			// Sample data
 
-			useDefault = std::stoi(argv[6]);
+			useDefault = std::string(argv[6]);
 		}
 		else 
 		{
