@@ -29,11 +29,6 @@ Coral::Coral(std::vector<Job> jobs, int numProcesses, int numMachines, int seedE
 		}
 	}
 
-	for (int i = 0; i < numProcesses; i++) 
-	{
-		machines_.push_back(std::rand() % numMachines + 1); // Random machine ID
-	}
-
 	// Shuffle the processes using a random engine
     std::random_device rd;
 
@@ -48,7 +43,27 @@ Coral::Coral(std::vector<Job> jobs, int numProcesses, int numMachines, int seedE
     std::mt19937 gen(seed);
 
 	std::shuffle(processes_.begin(), processes_.end(), gen);
-    std::shuffle(machines_.begin(), machines_.end(), gen);
+	std::vector<int> occurrenceVector(*max_element(processes_.begin(), processes_.end()) + 1, 0);
+
+	for (int i = 0; i < numProcesses; i++) {
+		const int jobIndex = processes_[i] - 1;
+		occurrenceVector[jobIndex]++;
+		const int processIndex = occurrenceVector[jobIndex] - 1;
+
+		auto random = std::rand() % numMachines ;
+		
+		int currentWorkpieceTime = jobs[jobIndex].processes[processIndex].machineDurations[random];
+
+		while(currentWorkpieceTime == 100) {
+			random = std::rand() % numMachines;
+			currentWorkpieceTime = jobs[jobIndex].processes[processIndex].machineDurations[random];
+		}
+
+		// std::cout << "CRO_init: " << currentWorkpieceTime << std::endl;
+		
+		machines_.push_back(random+1); // Random machine ID
+	}
+
 
 	// initialize with 0 maximum completion time
 	maxCompletionTime_ = 0;
@@ -81,7 +96,7 @@ std::string Coral::getGenesAsString()
 	return output;
 }
 
-void Coral::mutate(const int& numberOfMachines)
+void Coral::mutate(std::vector<Job> jobs,const int& numberOfMachines)
 {
 	std::random_device rd;
 	// Get a high-resolution time point as part of the seed
@@ -94,9 +109,23 @@ void Coral::mutate(const int& numberOfMachines)
 	int randomMachineIndex = gen() % processes_.size(); // m[3] = 2
 	int mutatedMachineId = machines_[randomMachineIndex];
 
-	while (mutatedMachineId == machines_[randomMachineIndex]) 
+	std::vector<int> occurrenceVector(*max_element(processes_.begin(), processes_.end()) + 1, 0);
+
+	int jobIndex;
+
+	for(int i = 0; i < randomMachineIndex+1; i++)
 	{
+		jobIndex = processes_[i] - 1;
+		occurrenceVector[jobIndex]++;
+	}
+	int processIndex = occurrenceVector[jobIndex] - 1;
+	const int mutatedMachineIndex = mutatedMachineId-1;
+	int currentWorkpieceTime = jobs[jobIndex].processes[processIndex].machineDurations[mutatedMachineIndex];
+
+	while (currentWorkpieceTime == 100) {
 		mutatedMachineId = gen() % numberOfMachines + 1;
+
+		currentWorkpieceTime = jobs[jobIndex].processes[processIndex].machineDurations[mutatedMachineId-1];
 	}
 	
 	machines_[randomMachineIndex] = mutatedMachineId;

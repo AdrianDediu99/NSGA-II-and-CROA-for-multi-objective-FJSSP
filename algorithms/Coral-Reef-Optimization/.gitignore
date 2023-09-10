@@ -1,3 +1,5 @@
 /.vs
 /.vscode
 cro.exe
+mk*
+benchmark.txt

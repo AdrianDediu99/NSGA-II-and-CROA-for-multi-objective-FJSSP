@@ -7,23 +7,24 @@
 class CRO {
 public:
 	CRO();
-	CRO(int numberOfJobs, int numberOfMachines, int numberOfProcesses, int reefSize, int generations, int useDefault);
+	CRO(int numberOfJobs, int numberOfMachines, int numberOfProcesses, int reefSize, int generations, std::string useDefault);
 	void run();
 private:
-	void initalizePopulation();
+	void initializePopulation();
 	void sexualReproduction();
 	void broadcastSpawning(const CoralPtr& parent1, const CoralPtr& parent2);
 	void broodingMutation(const CoralPtr& coral);
 	void determineFitnessValue();
 	void calculateDominationCounts();
 	void larvaSettling(int allowedLarvaeInReef);
+	void extremeDepredation();
 	void asexualReproduction();
 	void depredation();
 	void cleanupOldValues();
 	void outputOptimalSolution();
 
 	// utility methods
-	std::vector<Job> importDefaultSample();
+	std::vector<Job> importDefaultSample(std::string fileName = "dataset.txt");
 	std::vector<Job> generateJobs(int numberOfJobs, int numberOfMachines, int numberOfProcesses);
 	void splitJobs(std::vector<int>& firstGroup, std::vector<int>& secondGroup);
 	void printPopulation();
@@ -50,5 +51,5 @@ private:
 	std::vector<std::vector<CoralPtr>> reef_;
 
 
-	int useDefaultSample_ = 0;
+	std::string useDefaultSample_ = "0";
 };

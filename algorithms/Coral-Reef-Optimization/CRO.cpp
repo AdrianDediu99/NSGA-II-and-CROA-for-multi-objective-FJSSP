@@ -18,7 +18,7 @@ CRO::CRO()
 	numberOfJobs_ = numberOfMachines_ = numberOfProcesses_ = reefSize_ = generations_ = 0;
 }
 
-CRO::CRO(int numberOfJobs, int numberOfMachines, int numberOfProcesses, int reefSize, int generations, int useDefault) 
+CRO::CRO(int numberOfJobs, int numberOfMachines, int numberOfProcesses, int reefSize, int generations, std::string useDefault) 
 {
 	numberOfJobs_ = numberOfJobs;
 	numberOfMachines_ = numberOfMachines;
@@ -32,7 +32,7 @@ void CRO::run()
 {
 	int generation = 1;
 
-	initalizePopulation();
+	initializePopulation();
 
 	while (generation < generations_) 
 	{
@@ -58,6 +58,12 @@ void CRO::run()
 		// RE-Calculate domination counts
 		calculateDominationCounts();
 
+		// Extreme Depredation Operator
+		extremeDepredation();
+
+		// RE-Calculate domination counts
+		calculateDominationCounts();
+
 		// Begin depredation
 		depredation();
 
@@ -71,16 +77,20 @@ void CRO::run()
 	outputOptimalSolution();
 }
 
-void CRO::initalizePopulation() 
+void CRO::initializePopulation() 
 {
 	// Generate jobs
-	if (useDefaultSample_ == 1) 
-	{
-		jobs_ = importDefaultSample();
-	} 
-	else 
-	{
-		jobs_ = generateJobs(numberOfJobs_, numberOfMachines_, numberOfProcesses_);
+	if (useDefaultSample_.size() == 1) {
+		if (std::stoi(useDefaultSample_) == 1) 
+		{
+			jobs_ = importDefaultSample();
+		} 
+		else 
+		{
+			jobs_ = generateJobs(numberOfJobs_, numberOfMachines_, numberOfProcesses_);
+		}
+	} else {
+		jobs_ = importDefaultSample(useDefaultSample_);
 	}
 
 	outputJobs(jobs_);
@@ -208,7 +218,7 @@ void CRO::broadcastSpawning(const CoralPtr& parent1, const CoralPtr& parent2)
 void CRO::broodingMutation(const CoralPtr& coral) 
 {
 	CoralPtr child = std::make_shared<Coral>(coral);
-	child->mutate(numberOfMachines_);
+	child->mutate(jobs_, numberOfMachines_);
 
 	waterLarvae_.push_back(child);
 }
@@ -438,6 +448,61 @@ void CRO::larvaSettling(int allowedLarvaeInReef)
 	waterLarvae_.clear();
 }
 
+void CRO::extremeDepredation() {
+	int maxDuplicatesAllowed = 3;
+	
+	std::vector<std::pair<int,int>> objectives;
+	for (int row = 0; row < reefSize_; row++) 
+	{
+        for (int col = 0; col < reefSize_; col++) 
+		{
+			if (reef_[row][col]) 
+			{
+				objectives.push_back(std::make_pair(reef_[row][col]->maxCompletionTime_, reef_[row][col]->totalEquipmentLoad_));
+			}
+        }
+    }
+
+	for (int row = 0; row < reefSize_; row++) 
+	{
+        for (int col = 0; col < reefSize_; col++) 
+		{
+			if (reef_[row][col]) 
+			{
+				int completionTime = reef_[row][col]->maxCompletionTime_;
+				int equipmentLoad = reef_[row][col]->totalEquipmentLoad_;
+				int count = std::count_if(objectives.begin(), objectives.end(),[&](const std::pair<int, int> pair) 
+				{
+					return (pair.first == completionTime && pair.second == equipmentLoad);
+				});
+
+				if(count > maxDuplicatesAllowed) {
+					// std::cout << "TOO MANY" << std::endl;
+					reef_[row][col] = nullptr;
+					auto it1 = std::find(
+						objectives.begin(), 
+						objectives.end(), 
+						std::make_pair(completionTime, equipmentLoad));
+					if (it1 != objectives.end()) 
+					{
+						objectives.erase(it1);
+					}
+
+					auto it2 = std::find(
+						currentPopulation_.begin(), 
+						currentPopulation_.end(), 
+						std::make_pair(row, col));
+					if (it2 != currentPopulation_.end()) 
+					{
+						currentPopulation_.erase(it2);
+					}
+				}
+			}
+        }
+    }
+	// printPopulation();
+}
+
 void CRO::asexualReproduction() 
 {
 	for (int i = 0; i < reefSize_; i++) 
@@ -464,7 +529,7 @@ void CRO::asexualReproduction()
 }
 
 void CRO::depredation() 
-{	
+{
 	std::vector<std::pair<std::pair<int,int>,int>> coralDominationCounts;
 	for (int row = 0; row < reefSize_; row++) 
 	{
@@ -545,20 +610,70 @@ void CRO::outputOptimalSolution()
 	std::cout << solutions[0]->getGenesAsString();
 }
 
-std::vector<Job> CRO::importDefaultSample()
+std::vector<Job> CRO::importDefaultSample(std::string fileName)
 {
 	std::vector<Job> jobs = std::vector<Job>(numberOfJobs_);
 
-	std::ifstream file("dataset.txt");
+	std::ifstream file(fileName);
 	std::string content;
-	
+
 	if (!file.is_open()) 
 	{
         content = "1,1:12,5,18,10,16,23,18,12,21,13;1,2:15,12,5,16,7,18,21,17,16,9;1,3:17,4,12,11,9,14,11,10,25,10;2,1:19,14,5,17,16,13,10,15,14,6;2,2:18,14,24,11,16,19,20,9,22,7;2,3:13,16,10,15,18,16,17,5,15,16;2,4:8,7,12,6,5,10,22,8,8,17;3,1:16,13,18,6,14,7,20,12,19,5;3,2:11,10,9,16,11,8,5,12,10,5;4,1:21,17,21,16,20,5,18,8,19,17;4,2:5,24,12,20,17,18,20,22,21,14;4,3:6,7,5,5,7,6,16,9,17,10;5,1:23,14,12,5,15,11,13,14,5,16;5,2:15,5,22,12,16,8,13,18,8,13;5,3:12,10,11,14,15,25,16,13,15,15;6,1:5,15,6,17,20,16,14,10,5,19;6,2:14,13,12,5,15,7,11,14,17,13;7,1:18,21,15,12,9,24,7,5,20,7;7,2:17,14,15,17,19,20,15,12,16,15;7,3:8,10,9,8,7,12,14,7,8,9;7,4:15,20,18,23,5,16,10,16,6,21;7,5:12,25,16,8,15,9,18,17,20,5;7,6:10,8,7,7,7,8,9,17,6,8;8,1:17,20,8,23,19,19,11,15,16,5;8,2:5,18,15,20,16,22,19,17,13,14;8,3:24,7,26,24,25,24,9,18,10,20;8,4:5,22,16,18,13,7,19,8,20,21;9,1:5,7,7,11,8,11,10,23,8,18;9,2:24,25,7,22,12,18,5,20,17,21;9,3:15,9,13,13,14,10,12,11,16,10;10,1:20,21,18,11,19,18,17,8,22,19;10,2:15,14,8,15,10,16,13,15,16,12;10,3:11,15,8,12,10,13,23,8,9,9";
     } 
 	else 
 	{
-		content = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		if (fileName.compare("dataset.txt") == 0) {
+			content = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		} else {
+			std::stringstream result;
+
+			int number_total_jobs, number_total_machines, number_max_operations;
+			std::string line;
+			std::getline(file, line);
+			std::istringstream headerStream(line);
+			headerStream >> number_total_jobs >> number_total_machines >> number_max_operations;
+
+			// Set Job Id to 1 to initiate dataset load
+			int currentJob = 1;
+
+			while (std::getline(file, line)) {
+				if (currentJob > number_total_jobs) {
+					break;
+				}
+
+
+				std::istringstream lineStream(line);
+				int number_operations;
+				lineStream >> number_operations;
+
+				for (int id_operation = 0; id_operation < number_operations; ++id_operation) {
+					result << currentJob << "," << id_operation+1 << ":";
+					int machinesNumber;
+					lineStream >> machinesNumber;
+					std::map<int,int> machinesMap;
+					for (int i = 1; i <= number_total_machines; i++) {
+						machinesMap.insert(std::make_pair(i,100));
+					}
+					for (int i = 0; i < machinesNumber; i++) {
+						int machine, time;
+						lineStream >> machine >> time;
+						machinesMap[machine] = time;
+					}
+
+					for (int i = 1; i <= number_total_machines; i++) {
+						if (i == number_total_machines) {
+							result << machinesMap[i] << ";";
+							break;
+						}
+						result << machinesMap[i] << ",";
+					}
+				}
+				currentJob++;
+			}
+
+			content = result.str();
+		}
 	}
 
 	size_t firstPeriodPos = content.find('.');
@@ -769,7 +884,7 @@ int main(int argc, char* argv[])
 	int numberOfJobs, numberOfMachines, numberOfProcesses;
 	int reefSize;
 	int generations;
-	int useDefault;
+	std::string useDefault;
 
 	if (command_line_args) 
 	{
@@ -787,7 +902,7 @@ int main(int argc, char* argv[])
 			generations = std::stoi(argv[5]);
 			
 			// Sample data
-			useDefault = std::stoi(argv[6]);
+			useDefault = std::string(argv[6]);
 		}
 		else 
 		{

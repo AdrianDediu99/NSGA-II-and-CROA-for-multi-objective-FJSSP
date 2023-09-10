@@ -13,7 +13,7 @@ public:
 	Coral(std::shared_ptr<Coral> coral);
 	Coral(std::vector<Job> jobs, int numProcesses, int numMachines, int seedEntropy);
 	std::string getGenesAsString();
-	void mutate(const int& numberOfMachines);
+	void mutate(std::vector<Job> jobs, const int& numberOfMachines);
 	bool dominates(const std::shared_ptr<Coral>& coral);
 
 	std::vector<int> processes_; // <jobId>
