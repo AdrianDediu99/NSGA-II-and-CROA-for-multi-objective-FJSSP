@@ -477,7 +477,6 @@ void CRO::extremeDepredation() {
 				});
 
 				if(count > maxDuplicatesAllowed) {
-					// std::cout << "TOO MANY" << std::endl;
 					reef_[row][col] = nullptr;
 					auto it1 = std::find(
 						objectives.begin(), 
@@ -500,7 +499,6 @@ void CRO::extremeDepredation() {
 			}
         }
     }
-	// printPopulation();
 }
 
 void CRO::asexualReproduction() 
